@@ -19,3 +19,22 @@ export async function fetchJson<T>(path: string): Promise<T> {
   }
   return (await response.json()) as T
 }
+
+/** 原样提取服务端报错：FastAPI 的 detail 或 ActionResult.message 都直接带出，不覆盖成笼统提示。 */
+export async function extractError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { detail?: unknown; message?: unknown }
+    if (typeof payload.message === 'string' && payload.message) {
+      return payload.message
+    }
+    if (typeof payload.detail === 'string' && payload.detail) {
+      return payload.detail
+    }
+    if (Array.isArray(payload.detail) && payload.detail.length > 0) {
+      return payload.detail.map((item) => JSON.stringify(item)).join('；')
+    }
+  } catch {
+    // 响应体不是 JSON 时落到状态码提示
+  }
+  return `接口返回 ${response.status}，数据未更新`
+}

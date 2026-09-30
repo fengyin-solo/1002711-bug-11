@@ -6,6 +6,55 @@
         <p class="page-desc">汇总各业务模块的关键指标，先看总量再看异常。</p>
       </div>
     </header>
+
+    <h3 class="section-title">泊位总览</h3>
+    <p v-if="berthError" class="inline-error" role="alert">
+      {{ berthError }}
+      <button class="link" type="button" @click="loadBerthOverview">重试</button>
+    </p>
+    <template v-else>
+      <div class="stat-row">
+        <article class="stat-card">
+          <span class="stat-label">泊位总数</span>
+          <strong class="stat-value">{{ berthOverview?.总数 ?? '-' }}</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">占用泊位</span>
+          <strong class="stat-value">{{ berthOverview?.占用数 ?? '-' }}</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">空闲泊位</span>
+          <strong class="stat-value">{{ berthOverview?.空闲数 ?? '-' }}</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">维护泊位</span>
+          <strong class="stat-value">{{ berthOverview?.维护数 ?? '-' }}</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">泊位占用率</span>
+          <strong class="stat-value">{{ berthOverview ? `${berthOverview.占用率}%` : '-' }}</strong>
+        </article>
+      </div>
+      <table class="data-table berth-table">
+        <thead>
+          <tr><th>泊位编号</th><th>靠泊船名</th><th>靠泊时段</th><th>离泊时段</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in berthOverview?.占用明细 ?? []" :key="item.泊位编号">
+            <td>{{ item.泊位编号 }}</td>
+            <td>{{ item.靠泊船名 }}</td>
+            <td>{{ item.靠泊时段 }}</td>
+            <td>{{ item.离泊时段 }}</td>
+          </tr>
+          <tr v-if="berthOverview && berthOverview.占用明细.length === 0">
+            <td colspan="4" class="empty-state">当前没有生效中的排靠记录</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="section-note">占用数随泊位分配明细实时重算，与泊位计划页为同一份数据口径。</p>
+    </template>
+
+    <h3 class="section-title">各模块待处理</h3>
     <div class="stat-row">
       <article v-for="card in cards" :key="card.label" class="stat-card">
         <span class="stat-label">{{ card.label }}</span>
@@ -31,24 +80,50 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { fetchJson } from '@/api/client'
+import { extractError, fetchJson, request } from '@/api/client'
 
 type Overview = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
 }
 
+type BerthOverview = {
+  总数: number
+  占用数: number
+  空闲数: number
+  维护数: number
+  不可用数: number
+  占用率: number
+  占用明细: { 泊位编号: string; 靠泊船名: string; 靠泊时段: string; 离泊时段: string }[]
+}
+
 const cards = ref<Overview['cards']>([])
 const moduleRows = ref<Overview['modules']>([])
+const berthOverview = ref<BerthOverview | null>(null)
+const berthError = ref('')
+
+async function loadBerthOverview() {
+  berthError.value = ''
+  try {
+    const response = await request('/api/berth/overview')
+    if (!response.ok) {
+      throw new Error(await extractError(response))
+    }
+    berthOverview.value = (await response.json()) as BerthOverview
+  } catch (error) {
+    berthError.value = error instanceof Error ? error.message : '泊位总览读取失败'
+  }
+}
 
 onMounted(async () => {
+  void loadBerthOverview()
   try {
     const payload = await fetchJson<Overview>('/api/overview')
     cards.value = payload.cards
     moduleRows.value = payload.modules
   } catch {
-    cards.value = [{"label": "业务模块", "value": 0}, {"label": "今日新增", "value": 0}]
-    moduleRows.value = [{"name": "泊位计划", "created": 0, "pending": 0, "abnormal": 0}, {"name": "船舶作业", "created": 0, "pending": 0, "abnormal": 0}, {"name": "岸桥调度", "created": 0, "pending": 0, "abnormal": 0}, {"name": "堆场策划", "created": 0, "pending": 0, "abnormal": 0}, {"name": "场桥调度", "created": 0, "pending": 0, "abnormal": 0}, {"name": "内集卡调度", "created": 0, "pending": 0, "abnormal": 0}, {"name": "集装箱信息", "created": 0, "pending": 0, "abnormal": 0}, {"name": "闸口管理", "created": 0, "pending": 0, "abnormal": 0}, {"name": "危险品申报", "created": 0, "pending": 0, "abnormal": 0}, {"name": "冷藏箱监控", "created": 0, "pending": 0, "abnormal": 0}, {"name": "绑扎加固", "created": 0, "pending": 0, "abnormal": 0}, {"name": "工班管理", "created": 0, "pending": 0, "abnormal": 0}, {"name": "箱体修洗", "created": 0, "pending": 0, "abnormal": 0}, {"name": "理货记录", "created": 0, "pending": 0, "abnormal": 0}, {"name": "海关查验", "created": 0, "pending": 0, "abnormal": 0}, {"name": "支线驳船", "created": 0, "pending": 0, "abnormal": 0}, {"name": "超限箱管理", "created": 0, "pending": 0, "abnormal": 0}, {"name": "空箱堆存", "created": 0, "pending": 0, "abnormal": 0}, {"name": "能耗监测", "created": 0, "pending": 0, "abnormal": 0}, {"name": "安全巡检", "created": 0, "pending": 0, "abnormal": 0}]
+    cards.value = [{ label: '业务模块', value: 0 }, { label: '今日新增', value: 0 }]
+    moduleRows.value = []
   }
 })
 </script>
