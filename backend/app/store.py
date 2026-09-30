@@ -43,7 +43,13 @@ class Store:
             {"label": "待处理", "value": sum(int(item["pending"]) for item in modules)},
             {"label": "异常量", "value": sum(int(item["abnormal"]) for item in modules)},
         ]
-        return {"cards": cards, "modules": modules}
+        result: dict[str, object] = {"cards": cards, "modules": modules}
+        # 泊位占用随分配明细重算：运营概览与泊位计划页读同一个方法，口径必须一致
+        if "berth" in self._tables:
+            from app.services.berth import service as berth_service
+
+            result["berth_occupancy"] = berth_service.occupancy_summary()
+        return result
 
 
 store = Store()
